@@ -671,6 +671,106 @@ class MigrationIntelligence:
                 'consumed_by_command': 'audit-modules-disk-vs-db',
             },
 
+            # Pattern 1.13 — forensic-fixture-capture convention
+            # Documents the protocol for preserving real-prod incident chains
+            # as bit-exact replay material in tests/fixtures/orphan_scenarios/.
+            # First instance wired 2026-05-10: scenario 07_sessionbootfailed_cascade
+            # captures the same incident that produced 1.11 / 1.11b / 1.14.
+            'forensic_fixture_capture': {
+                'triggers': [
+                    'live prod incident produces a captured chain in /audit/ + /FIXED/',
+                    (
+                        'incident corresponds to one or more newly-harvested patterns '
+                        'whose detection/fix logic needs regression coverage'
+                    ),
+                ],
+                'symptoms': [
+                    (
+                        'patterns ship without test coverage; regressions are caught '
+                        'only on the next production incident'
+                    ),
+                    (
+                        'synthetic fixtures (scenarios 01-06) cover individual '
+                        'failure modes but not multi-step cascades or '
+                        'false-positive-discrimination decisions'
+                    ),
+                ],
+                'prevention': (
+                    'every prod incident that produces a /FIXED/ resolution should '
+                    'also produce a numbered scenario dir under '
+                    'tests/fixtures/orphan_scenarios/ with bit-exact captured '
+                    'artifacts and a replay test file under tests/orphan_scenarios/'
+                ),
+                'risk_score': 0.5,
+                'detection_method': 'manual_curation_during_post_incident_review',
+                # Capture-and-replay protocol — no detection SQL, but sibling
+                # patterns expect this field for parity.
+                'detection_query': (
+                    "-- Capture protocol (manual, post-incident):\n"
+                    "-- 1. Identify the chain: every audit/* + FIXED/* dir from\n"
+                    "--    the same incident timeline.\n"
+                    "-- 2. Pull verbatim via `aws --profile frappe-backups s3 cp\n"
+                    "--    --recursive` into tests/fixtures/orphan_scenarios/<NN>_<slug>/\n"
+                    "--    forensic/<MM>_<chain_name>/. Number chains chronologically.\n"
+                    "-- 3. Do NOT reformat captured files — they are evidence.\n"
+                    "-- 4. Write README.md (narrative), expected_outcome.md (what\n"
+                    "--    the scanner+fix should produce on replay), and a test\n"
+                    "--    file under tests/orphan_scenarios/ with at minimum:\n"
+                    "--    a) presence assertions for each chain dir\n"
+                    "--    b) negative assertions for the false-positive boundary\n"
+                    "--       (what the fix should NOT delete)\n"
+                    "--    c) byte-equality assertions where chain redundancy is\n"
+                    "--       part of the diagnostic (e.g. paired cache-clear probes)\n"
+                    "--    d) a heavy replay test gated on APP_MIGRATOR_INTEGRATION\n"
+                    "--    e) a fixture-immutability hash watermark.\n"
+                    "-- 5. Register the scenario in this pattern's `instances` field."
+                ),
+                'auto_fix_available': False,
+                'auto_fix_algorithm': None,
+                'documentation_target': (
+                    'tests/fixtures/orphan_scenarios/<NN>_<slug>/README.md '
+                    '+ tests/orphan_scenarios/test_<NN>_<slug>.py'
+                ),
+                'related_patterns': [
+                    'orphan_ui_reference_after_doctype_removal',
+                    'cached_bootinfo_survives_doctype_removal',
+                    'browser_verified_health',
+                ],
+                'consumed_by_command': 'audit-modules-disk-vs-db',
+                'instances': [
+                    {
+                        'scenario': '07_sessionbootfailed_cascade',
+                        'incident_date': '2026-05-07',
+                        'site': 'erp.sysmayal2.cloud',
+                        'chains_captured': 5,
+                        'fixture_path': (
+                            'tests/fixtures/orphan_scenarios/'
+                            '07_sessionbootfailed_cascade/forensic/'
+                        ),
+                        'test_path': (
+                            'tests/orphan_scenarios/'
+                            'test_07_sessionbootfailed_cascade.py'
+                        ),
+                        'patterns_exercised': [
+                            'orphan_ui_reference_after_doctype_removal',
+                            'cached_bootinfo_survives_doctype_removal',
+                            'browser_verified_health',
+                        ],
+                        'wired_in_commit': 'release/v10.2.0 (post-f7aa606)',
+                    },
+                ],
+                'discovery_evidence': (
+                    'erp.sysmayal2.cloud 2026-05-07 SessionBootFailed cascade. '
+                    'Five captured chains (4 audit/, 1 FIXED/) provided ground '
+                    'truth for the false-positive discriminator that distinguishes '
+                    'boot-blocking refs (Workspace Sidebar Item) from informational-tier '
+                    'refs (tabVersion). A naive scanner-driven fix would have '
+                    'corrupted audit history; the captured chain proves the '
+                    'correct discrimination is part of the pattern, not an '
+                    'implementation detail.'
+                ),
+            },
+
         }
 
     def _load_risk_assessment_rules(self) -> dict[str, Any]:

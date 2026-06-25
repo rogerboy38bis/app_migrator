@@ -53,12 +53,25 @@ def _app_migrator_commit() -> str:
 
 
 def _current_site() -> str:
-    """Return current bench site name (or 'unknown')."""
+    """Return current bench site name (or 'unknown').
+
+    Reads /home/frappe/frappe-bench/sites/currentsite.txt — the canonical
+    source-of-truth maintained by `bench use <site>`. Replaces the prior
+    `bench find site` call which hangs indefinitely on this substrate
+    (W1 close-out receipt note: bench CLI subprocess hangs ~60s+ on this
+    bench install).
+
+    Preserves the 5s subprocess.run timeout pattern as a defensive guard
+    against slow FS reads under load (L417 doctrine: do not eliminate
+    defensive patterns; only swap the lookup mechanism).
+    """
+    currentsite_file = "/home/frappe/frappe-bench/sites/currentsite.txt"
     try:
         out = subprocess.run(
-            ["bench", "find", "site"], capture_output=True, text=True, timeout=5,
+            ["cat", currentsite_file],
+            capture_output=True, text=True, timeout=5,
         )
-        site = out.stdout.strip().splitlines()[0] if out.stdout.strip() else ""
+        site = out.stdout.strip() if out.stdout else ""
         return site or "unknown"
     except Exception:
         return "unknown"

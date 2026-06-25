@@ -55,7 +55,7 @@ def run_bench_json(cmd, *extra_args):
         capture_output=True, text=True, timeout=120,
     )
     # Skip ONLY if rc is non-standard (command not yet wrapped)
-    if result.returncode not in (0, 10, 20, 30, 40):
+    if result.returncode not in (0, 10, 20, 40):
         pytest.skip(
             f"{cmd} --json not yet wrapped (rc={result.returncode}): "
             f"{result.stderr[:200]}"

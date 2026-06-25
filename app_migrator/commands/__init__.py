@@ -62,6 +62,10 @@ from .benches import app_migrator_benches
 
 # ==================== DETECT CONFLICTS COMMAND (T1.8.2 → conflicts.py) ====================
 from .conflicts import app_migrator_conflicts
+from .module_conflicts import app_migrator_module_conflicts  # v0.5-alpha W1 (Coder 2026-06-24)
+from .planner import app_migrator_planner  # v0.5-alpha W1 (Coder 2026-06-24)
+from .verifier import app_migrator_verifier  # v0.5-alpha W1 (Coder 2026-06-24)
+from .sessions import app_migrator_sessions  # v0.5-alpha W1 (Coder 2026-06-24)
 
 # ==================== CREATE HOST COMMAND (T1.8.3 → create_host.py) ====================
 from .create_host import app_migrator_create_host
@@ -109,6 +113,7 @@ from .scan_donor_residue import app_migrator_scan_donor_residue
 from .verify_donor_cleanup_readiness import app_migrator_verify_donor_cleanup_readiness
 from .audit_app_for_antipattern import app_migrator_audit_app_for_antipattern
 from .audit_orphan_doctypes import app_migrator_audit_orphan_doctypes
+from .audit_modules_disk_vs_db import app_migrator_audit_modules_disk_vs_db
 from .clean_donor_residue import app_migrator_clean_donor_residue
 from .new_fresh_app import app_migrator_new_fresh_app
 from .migrate_module import app_migrator_migrate_module
@@ -194,6 +199,10 @@ from .simple_api_setup import quick_setup, simple_api_setup
 app_migrator.add_command(app_migrator_health, 'health')
 app_migrator.add_command(app_migrator_scan, 'scan')
 app_migrator.add_command(app_migrator_conflicts, 'conflicts')
+app_migrator.add_command(app_migrator_module_conflicts, 'module-conflicts')  # v0.5-alpha W1 (Coder 2026-06-24)
+app_migrator.add_command(app_migrator_planner, 'planner')  # v0.5-alpha W1 (Coder 2026-06-24)
+app_migrator.add_command(app_migrator_verifier, 'verifier')  # v0.5-alpha W1 (Coder 2026-06-24)
+app_migrator.add_command(app_migrator_sessions, 'sessions')  # v0.5-alpha W1 (Coder 2026-06-24)
 app_migrator.add_command(app_migrator_plan, 'plan')
 app_migrator.add_command(app_migrator_execute, 'execute')
 app_migrator.add_command(app_migrator_benches, 'benches')
@@ -238,6 +247,7 @@ app_migrator.add_command(app_migrator_scan_donor_residue, 'scan-donor-residue')
 app_migrator.add_command(app_migrator_verify_donor_cleanup_readiness, 'verify-donor-cleanup-readiness')
 app_migrator.add_command(app_migrator_audit_app_for_antipattern, 'audit-app-for-antipattern')
 app_migrator.add_command(app_migrator_audit_orphan_doctypes, 'audit-orphan-doctypes')
+app_migrator.add_command(app_migrator_audit_modules_disk_vs_db, 'audit-modules-disk-vs-db')
 app_migrator.add_command(app_migrator_clean_donor_residue, 'clean-donor-residue')
 app_migrator.add_command(app_migrator_new_fresh_app, 'new-fresh-app')
 app_migrator.add_command(app_migrator_migrate_module, 'migrate-module')
@@ -267,6 +277,10 @@ commands = [
     app_migrator_fix_json_app,
     app_migrator_orphans,
     app_migrator_resolve_duplicates,
+    app_migrator_module_conflicts,  # v0.5-alpha W1 (Coder 2026-06-24)
+    app_migrator_planner,  # v0.5-alpha W1 (Coder 2026-06-24)
+    app_migrator_verifier,  # v0.5-alpha W1 (Coder 2026-06-24)
+    app_migrator_sessions,  # v0.5-alpha W1 (Coder 2026-06-24)
     # Intelligence commands
     predict_success,
     generate_intelligent_plan,
@@ -284,3 +298,5 @@ logger.debug("App Migrator v%s ready", __version__)
 # Git push command
 
 # Analyze commands
+from . import skills  # v0.5-alpha W1 (Coder 2026-06-23)
+app_migrator.add_command(skills.skills)  # v0.5-alpha W1 (Coder 2026-06-23)

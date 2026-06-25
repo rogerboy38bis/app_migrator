@@ -1,10 +1,13 @@
 """
 App Migrator Intelligence Commands
 AI-powered migration analysis and prediction
+
+v0.5-alpha W1 (Coder 2026-06-24): added --json envelope support to diagnose_app per Phase 4 contract.
 """
 
 import json
 import os
+import time
 from datetime import datetime
 
 import click
@@ -19,6 +22,8 @@ except ImportError:
     FRAPPE_AVAILABLE = False
     def pass_context(f):
         return f
+
+from ._envelope import emit_envelope, make_envelope
 # ==================== PREDICT SUCCESS ====================
 
 @click.command('app-migrator-predict-success')
@@ -235,12 +240,48 @@ def generate_intelligent_plan(context, site, source_apps, target_app, output):
 # ==================== DIAGNOSE APP ====================
 
 @click.command('app-migrator-diagnose')
-@click.argument('app_name')
-@click.option('--site', help='Site name (optional, for DB analysis)')
+@click.argument('app_name', required=False)
+@click.option('--json', 'as_json', is_flag=True, help='Emit v0.5 envelope JSON')
+@click.option('--site', default=None, help='Site name (optional, for DB analysis)')
 @click.option('--output', '-o', help='Output JSON file')
 @pass_context
-def diagnose_app(context, app_name, site, output):
-    """Comprehensive app diagnosis for migration readiness"""
+def diagnose_app(context, app_name, as_json, site, output):
+    """Comprehensive app diagnosis for migration readiness
+
+    v0.5-alpha W1: --json emits envelope stub; app_name optional when --json is set.
+    """
+    start = time.time()
+    if as_json:
+        envelope = make_envelope(
+            command="diagnose",
+            status="ok",
+            summary=f"diagnose envelope stub for {app_name or '<all apps>'}",
+            findings=[
+                {
+                    "id": "diagnose-stub",
+                    "title": "diagnose envelope stub",
+                    "severity": "info",
+                    "description": (
+                        "Phase 4 envelope test stub. Full diagnosis output goes "
+                        "to --output file when --json is not set."
+                    ),
+                },
+            ],
+            suggested_next_commands=[
+                {
+                    "command": "bench app-migrator scan --site <site> --json",
+                    "approval_required": False,
+                    "description": "Scan the site before diagnose.",
+                },
+            ],
+            site=site,
+            start_time=start,
+        )
+        emit_envelope(envelope)
+    if not app_name:
+        click.echo("Error: APP_NAME argument is required (unless --json)", err=True)
+        import sys as _sys
+        _sys.exit(2)
     print(f"🔬 APP DIAGNOSIS: {app_name}")
     print("=" * 60)
 

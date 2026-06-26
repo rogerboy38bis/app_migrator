@@ -1,40 +1,90 @@
-"""L419: pattern_database must include a flt/unit-coercion pattern.
+"""L419 + W2(e): pattern_database re-export for the new scaffold.
 
 Per v0.5 spec Q7a: "engine.py wraps existing MigrationIntelligence as-is".
 The real bench app at apps/app_migrator/app_migrator/commands/intelligence_engine.py
-already has MigrationIntelligence with ~20 patterns; the new scaffold's
-engine.py re-exports it once the new scaffold is installed as a bench app.
+holds the full ~20-entry intelligence pattern map (keyed dict form). This scaffold
+re-exports a curated, radar-flag-shaped subset of those patterns in the list form
+the v0.5 radar layer consumes (each entry carries a stable ``id``, ``title``,
+``description``, ``severity`` per L380, and a ``detect(content)`` callable).
 
-For the v0.5-alpha W1 phase2 tests, we ship a minimal stub MigrationIntelligence
-in the new scaffold that satisfies the L419 contract (pattern_database contains
-a flt/unit/coerc/value-parse pattern). When the new scaffold is installed as a
-bench app at W1 close, this stub is replaced by a real re-export wrapper.
+W2 (e): grown from the 3 W1-alpha stub patterns to the full re-export
+(10 patterns) by digesting the genuine migration/security patterns from the real
+``intelligence_engine.py`` pattern_database (Q1 audit source). Severity is derived
+from each source pattern's ``risk_score`` via the L380 4-layer mapping:
+
+    risk_score >= 0.90 -> critical
+    risk_score >= 0.70 -> high
+    risk_score >= 0.40 -> warn
+    else                -> info
+
+Each pattern's ``detect(content: str) -> bool`` lets the data-quality / preflight
+layers match a source blob against the pattern without re-deriving the signature.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import re
+from typing import Any, Callable, Dict, List
+
+
+def _regex_detector(patterns: List[str]) -> Callable[[str], bool]:
+    """Build a case-insensitive ``detect(content) -> bool`` from regex fragments.
+
+    Returns True if ANY fragment matches the content. Compiled once at build
+    time so repeated scans over many files stay cheap.
+    """
+    compiled = [re.compile(p, re.IGNORECASE) for p in patterns]
+
+    def _detect(content: str) -> bool:
+        if not content:
+            return False
+        return any(rx.search(content) for rx in compiled)
+
+    return _detect
+
+
+def severity_for_risk(risk_score: float) -> str:
+    """Map a 0..1 risk score to the L380 4-layer severity enum."""
+    if risk_score >= 0.90:
+        return "critical"
+    if risk_score >= 0.70:
+        return "high"
+    if risk_score >= 0.40:
+        return "warn"
+    return "info"
 
 
 class MigrationIntelligence:
-    """Minimal stub for the L419 test contract.
+    """Curated re-export of the bench-app intelligence pattern_database.
 
-    Real implementation re-exports the existing MigrationIntelligence
-    from the bench app (per v0.5 spec Q7a). The W1-close refactor
-    replaces this class with a thin wrapper.
+    The real implementation (commands/intelligence_engine.py) keeps patterns in
+    a dict keyed by id with migration-tooling fields. This scaffold exposes the
+    radar-relevant subset as a list of envelope-shaped dicts, each with a
+    ``detect`` callable, for the v0.5 radar / preflight layers.
     """
 
     def __init__(self) -> None:
         self.pattern_database: List[Dict[str, Any]] = self._build_patterns()
 
     def _build_patterns(self) -> List[Dict[str, Any]]:
-        """Build the patterns list.
+        """Build the full radar pattern list (W2(e) re-export).
 
-        Includes L419 flt-coercion pattern + L394 radar patterns:
-          - fixture-drift (cross-substrate canonical fixture churn)
-          - symbol-collision (cross-app Python symbol collision)
-        Severity per L380 4-layer pattern: info/warn/high/critical.
+        Layer 1 — L419 data-quality + L394 radar (original W1-alpha stubs):
+          - flt_coercion_failure (info)
+          - l394_fixture_drift (warn)
+          - l394_symbol_collision (high)
+
+        Layer 2 — migration/security patterns digested from the real
+        intelligence_engine.py pattern_database (W2(e) re-export):
+          - apps_txt_instability (high)
+          - version_conflicts (high)
+          - payment_gateway_dependency (warn)
+          - hardcoded_secrets (critical)
+          - webhook_dependency (warn)
+          - encryption_compatibility (warn)
+          - frappe_cloud_dependency (warn)
         """
         return [
+            # ---- Layer 1: original W1-alpha radar/data-quality stubs ----
             {
                 "id": "flt_coercion_failure",
                 "title": "flt coercion collapses unit-suffixed strings",
@@ -50,6 +100,7 @@ class MigrationIntelligence:
                 "risk_score": 0.6,
                 "auto_fix_available": False,
                 "severity": "info",
+                "detect": _regex_detector([r"flt\s*\(", r"frappe\.utils\.flt"]),
             },
             {
                 "id": "l394_fixture_drift",
@@ -67,6 +118,7 @@ class MigrationIntelligence:
                 "risk_score": 0.7,
                 "auto_fix_available": False,
                 "severity": "warn",
+                "detect": _regex_detector([r"fixtures?", r"fixture.*hash"]),
             },
             {
                 "id": "l394_symbol_collision",
@@ -84,5 +136,150 @@ class MigrationIntelligence:
                 "risk_score": 0.8,
                 "auto_fix_available": False,
                 "severity": "high",
+                "detect": _regex_detector([r"ImportError", r"duplicate.*symbol"]),
+            },
+            # ---- Layer 2: re-export from intelligence_engine.py (W2(e)) ----
+            {
+                "id": "apps_txt_instability",
+                "title": "apps.txt instability across bench migrate/restart",
+                "description": (
+                    "apps.txt is regenerated by bench migrate/restart, silently "
+                    "dropping app_migrator (or other non-standard apps) from the "
+                    "install list. Detection: source references apps.txt mutation "
+                    "or app-install hooks that can regenerate the manifest."
+                ),
+                "triggers": ["bench migrate", "bench restart", "app installation"],
+                "symptoms": ["app_migrator missing from apps.txt", "regenerated apps.txt"],
+                "prevention": "pre_migration_hook_implementation",
+                "risk_score": 0.7,
+                "auto_fix_available": True,
+                "severity": severity_for_risk(0.7),
+                "detect": _regex_detector([r"apps\.txt", r"bench\s+migrate"]),
+            },
+            {
+                "id": "version_conflicts",
+                "title": "multiple __version__ definitions conflict",
+                "description": (
+                    "Multiple __version__ definitions across an app's modules "
+                    "produce NameError / import conflicts at load time. Detection: "
+                    "source declares __version__ in more than one place."
+                ),
+                "triggers": ["multiple __version__ definitions", "import errors"],
+                "symptoms": ["NameError: __version__ not defined", "import conflicts"],
+                "prevention": "single_source_version_management",
+                "risk_score": 0.8,
+                "auto_fix_available": True,
+                "severity": severity_for_risk(0.8),
+                "detect": _regex_detector([r"__version__"]),
+            },
+            {
+                "id": "payment_gateway_dependency",
+                "title": "payment-gateway processing dependency",
+                "description": (
+                    "App contains payment-processing code (stripe/razorpay/paypal/"
+                    "mpesa/braintree) requiring webhook re-registration and key "
+                    "rotation on migration. Detection: gateway-indicator regexes "
+                    "match the source."
+                ),
+                "triggers": ["app contains payment processing code"],
+                "symptoms": [
+                    "stripe/razorpay/paypal/mpesa/braintree references",
+                    "gateway configuration files",
+                    "webhook/endpoint configuration",
+                ],
+                "prevention": "document_gateway_dependencies_and_plan_webhook_reregistration",
+                "risk_score": 0.6,
+                "auto_fix_available": False,
+                "severity": severity_for_risk(0.6),
+                "detect": _regex_detector([
+                    r"payment.*gateway", r"gateway.*payment",
+                    r"stripe", r"razorpay", r"paypal", r"mpesa", r"braintree",
+                ]),
+            },
+            {
+                "id": "hardcoded_secrets",
+                "title": "hardcoded API keys/secrets in source",
+                "description": (
+                    "Vendor-format secret keys (Stripe sk_*, Razorpay rzp_*, AWS "
+                    "AKIA*) committed to source are a high-severity migration "
+                    "blocker. Detection: vendor secret-shape regexes match the "
+                    "source."
+                ),
+                "triggers": ["hardcoded API keys/secrets in source code"],
+                "symptoms": [
+                    "stripe sk_* keys in .py/.js files",
+                    "razorpay rzp_* keys in source",
+                    "AWS access keys (AKIA*) in source",
+                ],
+                "prevention": "move_secrets_to_environment_variables_or_secure_config",
+                "risk_score": 0.95,
+                "auto_fix_available": False,
+                "severity": severity_for_risk(0.95),
+                "detect": _regex_detector([
+                    r"sk_[\w]+", r"rzp_[\w]+", r"AKIA[0-9A-Z]{16}",
+                ]),
+            },
+            {
+                "id": "webhook_dependency",
+                "title": "webhook/callback URL dependency",
+                "description": (
+                    "App uses webhook/callback URLs that become invalid when the "
+                    "host changes post-migration; gateway dashboards must be "
+                    "updated. Detection: webhook/callback URL assignments in source."
+                ),
+                "triggers": ["app uses webhook/callback URLs"],
+                "symptoms": ["webhook_url/callback_url/endpoint config in source"],
+                "prevention": "document_webhooks_and_update_gateway_dashboards_post_migration",
+                "risk_score": 0.5,
+                "auto_fix_available": False,
+                "severity": severity_for_risk(0.5),
+                "detect": _regex_detector([
+                    r"webhook_url", r"callback_url", r"webhook",
+                ]),
+            },
+            {
+                "id": "encryption_compatibility",
+                "title": "custom encryption compatibility risk",
+                "description": (
+                    "App uses cryptography/AES/RSA/Fernet that can fail to decrypt "
+                    "in the target environment if key material isn't migrated. "
+                    "Detection: encrypt/decrypt calls or crypto imports in source."
+                ),
+                "triggers": ["app uses cryptography/AES/RSA/Fernet"],
+                "symptoms": ["encrypt(/decrypt( calls", "cryptography/fernet imports"],
+                "prevention": "verify_encryption_in_target_before_cutover",
+                "risk_score": 0.5,
+                "auto_fix_available": False,
+                "severity": severity_for_risk(0.5),
+                "detect": _regex_detector([
+                    r"encrypt\(", r"decrypt\(", r"cryptography", r"fernet",
+                ]),
+            },
+            {
+                "id": "frappe_cloud_dependency",
+                "title": "Frappe Cloud credential/auth dependency",
+                "description": (
+                    "App depends on Frappe Cloud-specific auth (FRAPPE_CLOUD_API_KEY "
+                    "env var, .frappe_cloud_session, press.api.* endpoints) that the "
+                    "target environment must reproduce or the app fails silently. "
+                    "Detection: Frappe Cloud signatures in source."
+                ),
+                "triggers": [
+                    "app references FRAPPE_CLOUD_API_KEY env var",
+                    "app reads from .frappe_cloud_session",
+                    "app calls press.api.* endpoints",
+                ],
+                "symptoms": [
+                    "fc_test_key_/fc_dev_key_ prefixed keys in source",
+                    "cloud.frappe.io dashboard URL references",
+                ],
+                "prevention": "reproduce_frappe_cloud_credentials_in_target_environment",
+                "risk_score": 0.55,
+                "auto_fix_available": False,
+                "severity": severity_for_risk(0.55),
+                "detect": _regex_detector([
+                    r"FRAPPE_CLOUD_API_KEY", r"frappe_cloud_session",
+                    r"press\.api", r"fc_(test|dev)_key_",
+                ]),
             },
         ]

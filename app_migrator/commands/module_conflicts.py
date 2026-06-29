@@ -32,7 +32,7 @@ except ImportError:
 
 from ._envelope import emit_envelope, make_envelope
 
-DEFAULT_APPS_ROOT = "/home/frappe/frappe-bench/apps"
+DEFAULT_APPS_ROOT = os.environ.get("BENCH_APPS_ROOT", "/home/frappe/frappe-bench/apps")
 
 # Dirs we never treat as source (vendored / build / vcs noise).
 _SKIP_DIRS = {

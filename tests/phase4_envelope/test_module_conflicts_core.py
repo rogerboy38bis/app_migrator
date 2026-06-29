@@ -125,3 +125,17 @@ def test_command_clean_root_is_ok(tmp_path):
     envelope = json.loads(result.output)
     assert envelope["status"] == "ok"
     assert envelope["findings"] == []
+
+
+def test_default_apps_root_env_var_fallback(monkeypatch):
+    """L433 spirit: env var BENCH_APPS_ROOT overrides hardcoded default."""
+    import importlib
+    import app_migrator.commands.module_conflicts as mc
+    # Clear env var first
+    monkeypatch.delenv("BENCH_APPS_ROOT", raising=False)
+    importlib.reload(mc)
+    assert mc.DEFAULT_APPS_ROOT == "/home/frappe/frappe-bench/apps"
+    # Set env var + reload
+    monkeypatch.setenv("BENCH_APPS_ROOT", "/custom/env/path")
+    importlib.reload(mc)
+    assert mc.DEFAULT_APPS_ROOT == "/custom/env/path"

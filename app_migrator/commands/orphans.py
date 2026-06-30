@@ -212,7 +212,7 @@ def app_migrator_orphans(context, as_json, site, fix_mode, delete_mode, reassign
                         data = json.load(jf)
                 except Exception:
                     continue
-                if data.get('doctype') != 'DocType':
+                if not isinstance(data, dict) or data.get('doctype') != 'DocType':
                     continue
                 dt_name = data.get('name')
                 if not dt_name:

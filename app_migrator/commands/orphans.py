@@ -128,47 +128,54 @@ def app_migrator_orphans(context, as_json, site, fix_mode, delete_mode, reassign
     v0.5-alpha W1 (Coder 2026-06-24): --json envelope stub when set.
     """
     start = time.time()
-    if as_json:
-        envelope = make_envelope(
-            command="orphans",
-            status="ok",
-            summary="orphans envelope stub (full detection via existing CLI flags)",
-            findings=[
-                {
-                    "id": "orphans-stub",
-                    "title": "orphans envelope stub",
-                    "severity": "info",
-                    "description": (
-                        "Phase 4 envelope test stub. Full orphan detection runs "
-                        "via existing --fix/--delete/--reassign/--dry-run flags."
-                    ),
-                },
-            ],
-            suggested_next_commands=[
-                {
-                    "command": "bench app-migrator orphans --site <site> --fix",
-                    "approval_required": True,
-                    "description": "Auto-fix orphan doctypes (destructive; needs approval).",
-                },
-            ],
-            site=site,
-            start_time=start,
-        )
-        emit_envelope(envelope)
 
+    # v0.5 W3 fix #2: --json wraps the REAL detection result (not a stub). It is
+    # read-only (detection); the destructive --fix/--delete/--reassign paths run
+    # only in the non-JSON text mode.
     if not site:
         site = get_current_site()
         if not site:
+            if as_json:
+                emit_envelope(make_envelope(
+                    command="orphans",
+                    status="error",
+                    summary="orphans failed: no site (pass --site or set current site)",
+                    findings=[{
+                        "id": "orphans-no-site",
+                        "title": "No site specified",
+                        "severity": "high",
+                        "description": "orphan detection requires a site; pass --site or run 'bench use <site>'.",
+                    }],
+                    start_time=start,
+                ))
             print("❌ No site specified and no current site set. Use --site or 'bench use <site>'")
             return
 
-    mode = "DRY-RUN" if dry_run else "APPLY"
-    print(f"🔍 ORPHAN DETECTION [{mode}]")
-    print(f"   Site: {site}")
-    print("=" * 60)
+    if not as_json:
+        mode = "DRY-RUN" if dry_run else "APPLY"
+        print(f"🔍 ORPHAN DETECTION [{mode}]")
+        print(f"   Site: {site}")
+        print("=" * 60)
 
-    frappe.init(site=site)
-    frappe.connect()
+    try:
+        frappe.init(site=site)
+        frappe.connect()
+    except Exception as e:
+        if as_json:
+            emit_envelope(make_envelope(
+                command="orphans",
+                status="error",
+                summary=f"orphans failed: {type(e).__name__}",
+                findings=[{
+                    "id": "orphans-error",
+                    "title": "Orphan detection failed",
+                    "severity": "high",
+                    "description": str(e),
+                }],
+                site=site,
+                start_time=start,
+            ))
+        raise
 
     # Get installed apps and their modules
     installed_apps = frappe.get_installed_apps()
@@ -234,7 +241,7 @@ def app_migrator_orphans(context, as_json, site, fix_mode, delete_mode, reassign
                     continue  # keep first hit; never overwrite
                 filesystem_doctypes[dt_name] = record
 
-    if apps_txt_set is None:
+    if apps_txt_set is None and not as_json:
         print("   ⚠ sites/apps.txt missing — using pattern-based app filtering only")
 
     # Get all DocTypes from database
@@ -306,6 +313,53 @@ def app_migrator_orphans(context, as_json, site, fix_mode, delete_mode, reassign
 
     # Summary
     total_orphans = sum(len(v) for v in orphans.values())
+
+    # v0.5 W3 fix #2: under --json, emit the real detection result as an envelope
+    # (read-only) and stop before the text display / destructive apply paths.
+    if as_json:
+        frappe.db.close()
+        findings = []
+        for key, label, sev in [
+            ("no_app_field", "DocTypes with NULL app field (fixable)", "warn"),
+            ("wrong_app", "DocTypes with wrong app field", "warn"),
+            ("no_controller", "DocTypes missing .py controller (will be deleted by migrate)", "high"),
+            ("no_json", "DocTypes with no JSON definition", "info"),
+        ]:
+            items = orphans[key]
+            if items:
+                names = ", ".join(o['name'] for o in items[:10])
+                findings.append({
+                    "id": f"orphans-{key.replace('_', '-')}",
+                    "title": label,
+                    "severity": sev,
+                    "description": f"{len(items)} DocType(s): {names}" + (" ..." if len(items) > 10 else ""),
+                })
+        suggested = []
+        if total_orphans > 0:
+            suggested = [
+                {"command": f"bench app-migrator orphans --site {site} --fix --apply",
+                 "approval_required": True,
+                 "description": "Auto-fix NULL/wrong app fields + create missing controllers (destructive)."},
+                {"command": f"bench app-migrator orphans --site {site} --reassign <app> --apply",
+                 "approval_required": True,
+                 "description": "Reassign orphans to an app (destructive)."},
+                {"command": f"bench app-migrator orphans --site {site} --delete --apply",
+                 "approval_required": True,
+                 "description": "Delete no-JSON orphans (IRREVERSIBLE)."},
+            ]
+        emit_envelope(make_envelope(
+            command="orphans",
+            status="ok" if total_orphans == 0 else "warn",
+            summary=(
+                f"orphan detection: {total_orphans} orphan(s) across {len(all_doctypes)} "
+                f"DocTypes ({len(filesystem_doctypes)} on filesystem)"
+            ),
+            findings=findings,
+            evidence=[{"type": "orphan_counts", "data": {k: len(v) for k, v in orphans.items()}}],
+            suggested_next_commands=suggested,
+            site=site,
+            start_time=start,
+        ))
 
     print("\n📊 ORPHAN ANALYSIS:")
     print(f"   Total DocTypes scanned: {len(all_doctypes)}")
